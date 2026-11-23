@@ -83,6 +83,7 @@
   }
   function dateDisabled(date) {
     if (date < todayIso()) return true;
+    if (!state.propertyId) return false;
     if (!state.start || (state.end && nightCount(state.start,state.end)>=31)) return dayBlocked(date);
     if (date <= state.start) return dayBlocked(date);
     const nights = nightCount(state.start, date);
@@ -92,7 +93,7 @@
 
   function chooseDay(date) {
     if (!state.start || (state.end && nightCount(state.start,state.end)>=31) || date <= state.start) {
-      if (dayBlocked(date)) return;
+      if (state.propertyId && dayBlocked(date)) return;
       state.start = date;
       state.end = '';
     } else {
@@ -122,7 +123,7 @@
       const inRange = state.start && state.end && date > state.start && date < state.end;
       if (selected) button.classList.add('selected');
       if (inRange) button.classList.add('in-range');
-      const blocked = dayBlocked(date);
+      const blocked = !!state.propertyId && dayBlocked(date);
       if (blocked) button.classList.add('busy');
       button.disabled = dateDisabled(date);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
@@ -145,10 +146,10 @@
     status.classList.toggle('minimum', nights>0 && nights<31);
     if (state.failed.length) status.textContent = `Calendrier(s) indisponible(s) : ${state.failed.length}. Les dates devront être vérifiées manuellement.`;
     else if (state.start && state.end && nights < 31) status.textContent = `Vous avez sélectionné ${nights} nuit(s). La location touristique de courte durée est réglementée à Montréal. ROOM propose ici des séjours de 31 nuits minimum. Pour cette arrivée, choisissez un départ le ${formatDate(addDays(state.start,31))} ou après.`;
-    else if (state.start && state.end && !anyAvailableForRange(state.start, state.end)) status.textContent = 'Aucun logement ne semble libre pour toute cette période. Essayez d’autres dates.';
+    else if (state.start && state.end && !anyAvailableForRange(state.start, state.end)) status.textContent = 'Aucun logement libre pour toute cette période. Lancez la recherche pour voir les dates les plus proches.';
     else if (state.start && state.end) status.textContent = 'Au moins un logement semble libre. La disponibilité finale sera confirmée par ROOM.';
-    else status.textContent = state.loading ? 'Lecture des calendriers Airbnb…' : 'Les jours grisés sont déjà occupés.';
-    document.querySelector('[data-calendar-confirm]').disabled = !(state.start && state.end && nights >= 31 && anyAvailableForRange(state.start, state.end));
+    else status.textContent = state.loading ? 'Lecture des calendriers Airbnb…' : state.propertyId ? 'Les jours grisés sont déjà occupés.' : 'Choisissez vos dates souhaitées. Nous chercherons aussi des dates voisines si nécessaire.';
+    document.querySelector('[data-calendar-confirm]').disabled = !(state.start && state.end && nights >= 31 && (!state.propertyId || anyAvailableForRange(state.start, state.end)));
   }
 
   async function openCalendar(propertyId, onConfirm) {
@@ -219,54 +220,40 @@
     };
     document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
   }
-  function renderSearchResults(data) {
-    const target=document.querySelector('#availability-results');target.replaceChildren();
-    const caps={"esplanade_4801": 2, "villeneuve_155a": 4, "standre_1198": 8, "beaudry_f1597": 2, "villeneuve_155": 4, "villeneuve_159": 6}; data.results=data.results.filter(u=>!caps[u.id]||caps[u.id]>=data.guests); const status=document.createElement('p');status.className='availability-summary';status.textContent=data.results.length+' logement(s) libre(s) pour toute la période · '+data.feedsChecked+' / '+data.feedsTotal+' calendriers vérifiés.';target.append(status);
-    for(const unit of data.results){const card=document.createElement('article');card.className='available-property';
-      const h=document.createElement('h3');h.textContent=unit.name;card.append(h);
-      if(!unit.details)unit.details=unit.id+'.html';if(unit.details){const a=document.createElement('a');a.href=unit.details;a.textContent='Voir la fiche';card.append(a);}
-      const btn=document.createElement('button');btn.className='button';btn.type='button';btn.textContent='Demander de réserver';btn.onclick=()=>requestStay(unit,data.arrival,data.departure,data.guests);card.append(btn);target.append(card);}
+  function nearest(cal,arrival,nights,today,limit){
+    const candidates=new Set([arrival,today,limit,...cal.busy.flatMap(r=>[r.end,addDays(r.start,-nights)])]);
+    return [...candidates].filter(a=>a>=today && a<=limit && availableForRange(cal,a,addDays(a,nights))).sort((a,b)=>Math.abs(nightCount(arrival,a))-Math.abs(nightCount(arrival,b))||a.localeCompare(b))[0];
   }
-  function installGlobalSearch() {
-    const form = document.querySelector('#request-form');
-    if (!form) return;
-    const arrival = document.querySelector('#arrival');
-    const departure = document.querySelector('#departure');
-    const open = document.querySelector('[data-open-global-calendar]');
-    const search = document.querySelector('#search-availability');
-    const guest = document.querySelector('#guests');
-    const preferredRaw = new URLSearchParams(location.search).get('propriete');
-    const preferred = ({ verdun: 'lasalle_3881', boulevard: 'standre_1200' })[preferredRaw] || preferredRaw;
-    const queryArrival = new URLSearchParams(location.search).get('arrivee');
-    const queryDeparture = new URLSearchParams(location.search).get('depart');
-    if (queryArrival) setDateValue(arrival, queryArrival);
-    if (queryDeparture) setDateValue(departure, queryDeparture);
-    const setButtonLabel = () => {
-      if (!open) return;
-      open.textContent = arrival.value && departure.value ? `${dateFormatter.format(fromIso(arrival.value))} — ${dateFormatter.format(fromIso(departure.value))}` : 'Choisir les dates';
-    };
-    open?.addEventListener('click', () => openCalendar(null, (start, end) => { setDateValue(arrival, start); setDateValue(departure, end); setButtonLabel(); }));
-    setButtonLabel();
-    const runSearch = async () => {
-      const start = arrival.value, end = departure.value;
-      if (!start || !end || nightCount(start, end) < 31) {
-        document.querySelector('#availability-results').textContent = 'Choisissez une période d’au moins 31 nuits.';
-        return;
-      }
-      search.disabled = true;
-      search.textContent = 'Recherche en cours…';
-      try {
-        const data = await api(`/api/availability?arrival=${encodeURIComponent(start)}&departure=${encodeURIComponent(end)}&guests=${encodeURIComponent(guest.value || '1')}`);
-        renderSearchResults(data, preferred);
-      } catch (error) {
-        const target = document.querySelector('#availability-results');
-        target.textContent = `La vérification en ligne a échoué : ${error.message} Les disponibilités devront être vérifiées manuellement.`;
-      } finally { search.disabled = false; search.textContent = 'Rechercher tous les logements'; }
-    };
-    search?.addEventListener('click', runSearch);
-    if (queryArrival && queryDeparture) runSearch();
-    form.addEventListener('submit',event=>{event.preventDefault();runSearch();});
-    for(const el of [arrival,departure,guest])el.addEventListener('change',()=>document.querySelector('#availability-results').replaceChildren());
+  function installGlobalSearch(){
+    const form=document.querySelector('#request-form');if(!form)return;
+    const $=s=>document.querySelector(s),arrival=$('#arrival'),departure=$('#departure'),guest=$('#guests'),open=$('[data-open-global-calendar]'),target=$('#availability-results'),search=$('#search-availability'),section=$('#logements'),hero=$('.hero');
+    const cards=[...section.querySelectorAll('article.property')],grid=section.querySelector('.property-grid'),heading=section.querySelector('h2'),intro=section.querySelector('.section-head p'),initial=heading.textContent,description=intro.textContent;
+    const caps={lasalle_3881:7,standre_1200:6,esplanade_4801:2,villeneuve_155a:4,standre_1198:8,beaudry_f1597:2,villeneuve_155:4,villeneuve_159:6};
+    let generation=0;
+    function clear(){generation++;arrival.value=departure.value='';open.textContent='Choisir les dates';target.replaceChildren();hero.hidden=false;heading.textContent=initial;intro.textContent=description;for(const c of cards){c.hidden=false;c.querySelector('.match')?.remove();grid.append(c)}search.disabled=false;}
+    async function run(){
+      const start=arrival.value,end=departure.value,n=nightCount(start,end),g=Number(guest.value),seq=++generation;
+      if(!start||!end||n<31){target.textContent='Choisissez un séjour d’au moins 31 nuits.';return}
+      target.textContent='Vérification des calendriers…';search.disabled=true;hero.hidden=true;
+      cards.forEach(c=>{c.hidden=true;c.querySelector('.match')?.remove()});
+      try{
+        const data=await api('/api/calendars');if(seq!==generation)return;
+        const today=todayIso(),limit=addDays(today,365-n);
+        const units=data.calendars.filter(c=>caps[c.property.id]>=g);
+        let matches=units.filter(c=>availableForRange(c,start,end)).map(c=>({c,a:start}));const exact=matches.length>0;
+        if(!exact){matches=units.map(c=>({c,a:nearest(c,start,n,today,limit)})).filter(m=>m.a).sort((x,y)=>Math.abs(nightCount(start,x.a))-Math.abs(nightCount(start,y.a))||x.a.localeCompare(y.a)).slice(0,3)}
+        heading.textContent=exact?'Disponibles pour vos dates':matches.length?'Les disponibilités les plus proches':'Aucun séjour trouvé';
+        intro.textContent=exact?'Du '+formatDate(start)+' au '+formatDate(end):'Aucun résultat exact parmi les calendriers vérifiés. '+(matches.length?'Voici les options les plus proches pour '+n+' nuits.':'Essayez de modifier vos dates ou le nombre de personnes.');
+        target.textContent=heading.textContent+' · '+matches.length+' résultat(s). '+(data.complete?'':'Certains calendriers sont indisponibles. ');
+        for(const {c,a} of matches){const card=cards.find(el=>el.querySelector('[data-open-room-calendar]').dataset.openRoomCalendar===c.property.id);if(!card)continue;
+          const finish=addDays(a,n),box=document.createElement('div');box.className='match';const dates=document.createElement('strong');dates.textContent='Du '+formatDate(a)+' au '+formatDate(finish)+' · '+n+' nuits';
+          const btn=document.createElement('button');btn.type='button';btn.className='button';btn.textContent='Demander de réserver';btn.onclick=()=>requestStay({id:c.property.id,name:c.property.label},a,finish,g);box.append(dates,btn);card.querySelector('.card-actions').before(box);grid.append(card);card.hidden=false;}
+        section.scrollIntoView({block:'start'});
+      }catch{if(seq!==generation)return;target.textContent='Les calendriers ne répondent pas. Réessayez dans un instant.';heading.textContent='Disponibilités non vérifiées';intro.textContent='';}
+      finally{if(seq===generation){search.disabled=false;const reset=document.createElement('button');reset.type='button';reset.className='small-link';reset.textContent='Afficher tous les logements';reset.onclick=clear;target.append(reset)}}
+    }
+    open.onclick=()=>openCalendar(null,(a,b)=>{arrival.value=a;departure.value=b;open.textContent=formatDate(a)+' — '+formatDate(b);run()});search.onclick=run;guest.onchange=()=>{if(arrival.value)run()};form.onsubmit=e=>{e.preventDefault();run()};
+    const q=new URLSearchParams(location.search),a=q.get('arrivee'),b=q.get('depart');if(a&&b&&/^\d{4}-\d{2}-\d{2}$/.test(a)&&/^\d{4}-\d{2}-\d{2}$/.test(b)&&a>=todayIso()&&nightCount(a,b)>=31){arrival.value=a;departure.value=b;open.textContent=formatDate(a)+' — '+formatDate(b);run()}
   }
 
   function installDetailCalendar() {
