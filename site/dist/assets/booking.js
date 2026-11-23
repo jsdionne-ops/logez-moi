@@ -1,8 +1,8 @@
 (() => {
   const API = 'https://room-availability-calendar-api.jsdionne.chatgpt.site';
   const propertyDetails = {
-    standre_1200: 'boulevard.html',
-    lasalle_3881: 'verdun.html',
+    boulevard: 'boulevard.html',
+    verdun: 'verdun.html',
   };
   const weekdayLabels = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
   const monthFormatter = new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -228,7 +228,7 @@
     const form=document.querySelector('#request-form');if(!form)return;
     const $=s=>document.querySelector(s),arrival=$('#arrival'),departure=$('#departure'),guest=$('#guests'),open=$('[data-open-global-calendar]'),target=$('#availability-results'),search=$('#search-availability'),section=$('#logements'),hero=$('.hero');
     const cards=[...section.querySelectorAll('article.property')],grid=section.querySelector('.property-grid'),heading=section.querySelector('h2'),intro=section.querySelector('.section-head p'),initial=heading.textContent,description=intro.textContent;
-    const caps={lasalle_3881:7,standre_1200:6,esplanade_4801:2,villeneuve_155a:4,standre_1198:8,beaudry_f1597:2,villeneuve_155:4,villeneuve_159:6};
+    const caps={verdun:7,boulevard:6,atelier:2,sommet:4,loft:8,jardin:2,bureau:4,angle:6};
     let generation=0;
     function clear(){generation++;arrival.value=departure.value='';open.textContent='Choisir les dates';target.replaceChildren();hero.hidden=false;heading.textContent=initial;intro.textContent=description;for(const c of cards){c.hidden=false;c.querySelector('.match')?.remove();grid.append(c)}search.disabled=false;}
     async function run(){

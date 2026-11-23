@@ -1,12 +1,60 @@
 const PROPERTIES = [
-  { id: "esplanade_4801", label: "Esplanade · 4801 Esplanade", address: "4801 Esplanade", calendar: "ICAL_ESPLANADE_4801", capacity: null },
-  { id: "villeneuve_155a", label: "Villeneuve · 155a", address: "155a, rue Villeneuve", calendar: "ICAL_VILLENEUVE_155A", capacity: null },
-  { id: "standre_1198", label: "Saint-André · 1198", address: "1198, rue Saint-André", calendar: "ICAL_STANDRE_1198", capacity: null },
-  { id: "beaudry_f1597", label: "Beaudry · F1597", address: "1597, rue Beaudry", calendar: "ICAL_BEAUDRY_F1597", capacity: null },
-  { id: "villeneuve_155", label: "Villeneuve · 155", address: "155, rue Villeneuve", calendar: "ICAL_VILLENEUVE_155", capacity: null },
-  { id: "villeneuve_159", label: "Villeneuve · 159", address: "159, rue Villeneuve", calendar: "ICAL_VILLENEUVE_159", capacity: null },
-  { id: "standre_1200", label: "Saint-André · 1200 (Le Boulevard)", address: "1200, rue Saint-André", calendar: "ICAL_STANDRE_1200", capacity: 6, details: "boulevard.html" },
-  { id: "lasalle_3881", label: "LaSalle · 3881 (Verdun)", address: "3881, boulevard LaSalle", calendar: "ICAL_LASALLE_3881", capacity: 7, details: "verdun.html" },
+  {
+    "id": "atelier",
+    "label": "L’Atelier",
+    "details": "atelier.html",
+    "capacity": 2,
+    "calendar": "3bd8cefcbdeec0d4fb0df495dd32b26318b4b6c8c5b295370500a7daa28f88a2"
+  },
+  {
+    "id": "sommet",
+    "label": "Le Sommet",
+    "details": "sommet.html",
+    "capacity": 4,
+    "calendar": "0c70f9b2784efaa8a45755df849699da0b4482da8ba0c5e2b7e6f9529b9db6ad"
+  },
+  {
+    "id": "loft",
+    "label": "Le Loft",
+    "details": "loft.html",
+    "capacity": 8,
+    "calendar": "9515e1e977269b826cef0323ad110f5315c895fc366e278d9f6d755afad20a4b"
+  },
+  {
+    "id": "jardin",
+    "label": "Le Jardin",
+    "details": "jardin.html",
+    "capacity": 2,
+    "calendar": "e880e82b3d7657327fe0a0ba0df91746ad7fc8d24fe2febc01da759dd0d18af5"
+  },
+  {
+    "id": "bureau",
+    "label": "Le Studio des lettres",
+    "details": "bureau.html",
+    "capacity": 4,
+    "calendar": "816cfec0056ff4dd185e30438dffb959f29945afe743a2bec2732f991de10378"
+  },
+  {
+    "id": "angle",
+    "label": "Le Coin lumineux",
+    "details": "angle.html",
+    "capacity": 6,
+    "calendar": "18ef42cfcb3b3375f43d8e35f6be515e57dd09bd9fa92ab8563728080ee3951b"
+  },
+  {
+    "id": "boulevard",
+    "label": "Le Boulevard",
+    "details": "boulevard.html",
+    "capacity": 6,
+    "calendar": "65ca853399cffa0c625074e5d6b2706d59ea3db2f30df6d2d03c17c178b4c00c"
+  },
+  {
+    "id": "verdun",
+    "label": "Le grand appartement de Verdun",
+    "details": "verdun.html",
+    "capacity": 7,
+    "calendar": "a4a5807fc11bc592d3fd305a4a968f5a2bd835a5402a7f40305ca079c037ff2b"
+  }
 ];
 const ALLOWED_ORIGINS = new Set([
   "https://room-sejours-moyenne-duree.jsdionne.chatgpt.site",
@@ -61,7 +109,9 @@ function parseIcal(text) {
 }
 
 async function loadCalendar(property, env) {
-  const url = env[property.calendar];
+  const keys=Object.keys(env).filter(k=>k.startsWith('ICAL_'));
+  const bindings=await Promise.all(keys.map(async k=>[Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(k))),b=>b.toString(16).padStart(2,'0')).join(''),k]));
+  const url=env[bindings.find(([h])=>h===property.calendar)?.[1]];
   if (!url) throw new Error("calendar_not_configured");
   const cached = cache.get(property.id);
   if (cached && Date.now() - cached.at < 120000) return cached.events;
@@ -96,7 +146,7 @@ export default {
       const propertyId = url.searchParams.get("property");
       const { rows, failed } = await loadAll(env, propertyId);
       const calendars = rows.map(({ property, events }) => ({
-        property: { id: property.id, label: property.label, address: property.address, details: property.details || null },
+        property: { id: property.id, label: property.label, details: property.details || null },
         busy: events,
       }));
       return response({ checkedAt: new Date().toISOString(), calendars, failed, complete: failed.length === 0 }, failed.length && rows.length === 0 ? 503 : 200, origin);
@@ -116,7 +166,7 @@ export default {
       const results = rows.filter(({ property, events }) => {
         if (property.capacity && guests > property.capacity) return false;
         return !events.some(event => event.start < departure && event.end > arrival);
-      }).map(({ property }) => ({ id: property.id, name: property.label, address: property.address, details: property.details || null, capacity: property.capacity }));
+      }).map(({ property }) => ({ id: property.id, name: property.label, details: property.details || null, capacity: property.capacity }));
       return response({ arrival, departure, nights, guests, checkedAt: new Date().toISOString(), feedsChecked: rows.length, feedsTotal: PROPERTIES.length, complete: failed.length === 0, failed, results }, 200, origin);
     }
 
