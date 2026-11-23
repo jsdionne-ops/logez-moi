@@ -1,10 +1,5 @@
 # Logez-moi
 
-Site de logements meublés à Montréal pour des séjours de 31 nuits et plus.
+`site/dist/` contient la vitrine de location meublée, les photos et les calendriers des huit logements. `api/` contient le service de disponibilités. Les liens iCal privés se configurent dans les secrets du serveur. Pour construire le Worker : `cd api && npm run build && npm run validate`.
 
-- `site/dist/` : site vitrine, photos, fiches et recherche de disponibilités.
-- `api/worker/index.js` : lecture des huit calendriers iCal et recherche des séjours disponibles.
-
-Les URL iCal sont fournies au serveur dans les variables secrètes ICAL_* indiquées dans le Worker. Ne jamais les ajouter au dépôt. Le formulaire prépare une demande de test sans l’envoyer ni bloquer les dates.
-
-Pour servir la vitrine localement : `python3 -m http.server 4173 --directory site/dist`. Pour construire et vérifier le service : `cd api && npm run build && npm run validate`. La vitrine utilise le service de disponibilités hébergé; son accès dépend des autorisations de cet hébergement.
+La demande de réservation requiert un séjour disponible de 31 nuits minimum. Le formulaire transmet les coordonnées et les dates par FormSubmit à ROOM pour confirmation manuelle. Activer le formulaire par courriel si demandé et vérifier les deux boîtes de réception.
